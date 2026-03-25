@@ -9,12 +9,17 @@ import toast from "react-hot-toast";
 
 export default function StagiaireFirstLoginPage() {
   const router = useRouter();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!email.trim()) {
+      toast.error("L'adresse email est requise");
+      return;
+    }
     if (password.length < 6) {
       toast.error("Le mot de passe doit contenir au moins 6 caractères");
       return;
@@ -28,7 +33,7 @@ export default function StagiaireFirstLoginPage() {
       const res = await fetch("/api/auth/first-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -56,6 +61,15 @@ export default function StagiaireFirstLoginPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <Input
+              label="Adresse email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="vous@exemple.fr"
+              required
+              autoComplete="email"
+            />
             <Input
               label="Mot de passe"
               type="password"

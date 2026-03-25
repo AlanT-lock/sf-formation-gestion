@@ -13,6 +13,7 @@ const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   points_cles: "Test Points clés",
   test_fin: "Test de fin de formation",
   enquete_satisfaction: "Enquête de satisfaction",
+  enquete_satisfaction_financeur: "Enquête de satisfaction financeur",
   bilan_final: "Bilan final",
 };
 
@@ -29,7 +30,7 @@ interface FormationDocument {
   document_type: DocumentType;
   nom_affiche: string;
   ordre: number;
-  rempli_par: "stagiaire" | "formateur";
+  rempli_par: "stagiaire" | "formateur" | "financeur";
   created_at: string;
 }
 
@@ -277,7 +278,7 @@ export function FormationContenu({ formationId, formationNom }: FormationContenu
                     <select
                       value={doc.rempli_par ?? "stagiaire"}
                       onChange={async (e) => {
-                        const val = e.target.value as "stagiaire" | "formateur";
+                        const val = e.target.value as "stagiaire" | "formateur" | "financeur";
                         setSaving(true);
                         try {
                           const res = await fetch(`/api/admin/formations/${formationId}/documents`, {
@@ -299,6 +300,7 @@ export function FormationContenu({ formationId, formationNom }: FormationContenu
                     >
                       <option value="stagiaire">Rempli par le stagiaire</option>
                       <option value="formateur">Rempli par le formateur</option>
+                      <option value="financeur">Fourni par le financeur</option>
                     </select>
                   )}
                 </div>

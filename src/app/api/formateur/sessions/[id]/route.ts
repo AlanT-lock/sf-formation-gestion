@@ -30,7 +30,7 @@ export async function GET(
       formation:formations(nom),
       session_creneaux(id, ordre, heure_debut, heure_fin),
       session_step_triggers(id, step_type, creneau_id, triggered_at),
-      inscriptions(id, stagiaire_id, stagiaire:stagiaires(nom, prenom))
+      inscriptions(id, stagiaire_id, analyse_besoins_texte, stagiaire:stagiaires(nom, prenom, user_id, users(username)))
     `)
     .eq("id", id)
     .eq("formateur_id", formateur.id)

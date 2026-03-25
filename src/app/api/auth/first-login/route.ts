@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { password } = body;
+    const { password, email } = body;
     if (!password || password.length < 6) {
       return NextResponse.json(
         { error: "Le mot de passe doit contenir au moins 6 caractères" },
@@ -40,14 +40,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const emailTrimmed =
+      typeof email === "string" && email.trim() ? email.trim() : null;
+
     const hash = await hashPassword(password);
+    const updates: {
+      password_hash: string;
+      first_login_done: boolean;
+      updated_at: string;
+      email?: string | null;
+    } = {
+      password_hash: hash,
+      first_login_done: true,
+      updated_at: new Date().toISOString(),
+    };
+    if (emailTrimmed !== undefined) {
+      updates.email = emailTrimmed;
+    }
+
     const { error } = await supabase
       .from("users")
-      .update({
-        password_hash: hash,
-        first_login_done: true,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updates)
       .eq("id", payload.sub);
 
     if (error) {

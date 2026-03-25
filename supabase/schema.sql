@@ -122,7 +122,7 @@ CREATE TABLE formation_documents (
   document_type document_type NOT NULL,
   nom_affiche TEXT NOT NULL,
   ordre INTEGER NOT NULL DEFAULT 0,
-  rempli_par TEXT NOT NULL DEFAULT 'stagiaire' CHECK (rempli_par IN ('stagiaire', 'formateur')),
+  rempli_par TEXT NOT NULL DEFAULT 'stagiaire' CHECK (rempli_par IN ('stagiaire', 'formateur', 'financeur')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(formation_id, document_type)
 );

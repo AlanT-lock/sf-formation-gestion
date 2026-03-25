@@ -16,6 +16,7 @@ const DOCUMENT_LABELS: Record<DocumentType, string> = {
   points_cles: "Test Points clés",
   test_fin: "Test de fin de formation",
   enquete_satisfaction: "Enquête de satisfaction",
+  enquete_satisfaction_financeur: "Enquête de satisfaction financeur",
   bilan_final: "Bilan final",
 };
 
@@ -72,26 +73,34 @@ export async function GET(
   const documents: {
     document_type: DocumentType;
     nom_affiche: string;
-    questions: { id: string; libelle: string; ordre: number }[];
+    ordre: number;
+    questions: { id: string; libelle: string; ordre: number; type_reponse: string; options: Record<string, unknown> | null }[];
     reponses: Record<string, string>;
   }[] = [];
 
   if (formationId) {
     const { data: fdList } = await supabase
       .from("formation_documents")
-      .select("document_type, nom_affiche")
+      .select("document_type, nom_affiche, ordre")
       .eq("formation_id", formationId)
-      .in("document_type", DOCUMENT_TYPES);
+      .in("document_type", DOCUMENT_TYPES)
+      .order("ordre");
 
     for (const fd of fdList ?? []) {
       const { data: questions } = await supabase
         .from("questions")
-        .select("id, libelle, ordre")
+        .select("id, libelle, ordre, type_reponse, options")
         .eq("formation_id", formationId)
         .eq("document_type", fd.document_type)
         .order("ordre");
 
-      const qList = (questions ?? []).map((q) => ({ id: q.id, libelle: q.libelle, ordre: q.ordre }));
+      const qList = (questions ?? []).map((q) => ({
+        id: q.id,
+        libelle: q.libelle,
+        ordre: q.ordre,
+        type_reponse: q.type_reponse ?? "texte_libre",
+        options: q.options as Record<string, unknown> | null,
+      }));
       const rep: Record<string, string> = {};
       for (const q of qList) {
         if (q.id in reponsesByQ) rep[q.id] = reponsesByQ[q.id];
@@ -99,6 +108,7 @@ export async function GET(
       documents.push({
         document_type: fd.document_type as DocumentType,
         nom_affiche: fd.nom_affiche,
+        ordre: (fd as { ordre?: number }).ordre ?? 0,
         questions: qList,
         reponses: rep,
       });

@@ -74,6 +74,11 @@ export default function AdminLoginPage() {
             </Button>
           </form>
           <p className="mt-4 text-center text-sm text-slate-500">
+            <Link href="/mot-de-passe-oublie" className="text-primary-600 hover:underline">
+              Mot de passe oublié ?
+            </Link>
+          </p>
+          <p className="mt-2 text-center text-sm text-slate-500">
             <Link href="/" className="text-primary-600 hover:underline">
               Retour à l&apos;accueil
             </Link>

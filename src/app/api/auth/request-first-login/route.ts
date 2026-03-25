@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { createToken, setAuthCookie } from "@/lib/auth";
+import type { UserRole } from "@/types/database";
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
     const token = await createToken({
       userId: user.id,
       username: user.username,
-      role: user.role,
+      role: user.role as UserRole,
       firstLoginDone: false,
     });
     await setAuthCookie(token);

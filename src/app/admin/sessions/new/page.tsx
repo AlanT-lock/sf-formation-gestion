@@ -7,7 +7,12 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import toast from "react-hot-toast";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+
+interface Financeur {
+  nom: string;
+  email: string;
+}
 
 interface Formation {
   id: string;
@@ -29,6 +34,7 @@ export default function NewSessionPage() {
   const [nbCreneaux, setNbCreneaux] = useState(2);
   const [formateurId, setFormateurId] = useState("");
   const [dates, setDates] = useState<string[]>([]);
+  const [financeurs, setFinanceurs] = useState<Financeur[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -87,6 +93,7 @@ export default function NewSessionPage() {
           nb_creneaux: nbCreneaux,
           formateur_id: formateurId,
           dates: dates.filter(Boolean),
+          financeurs,
         }),
       });
       const data = await res.json();
@@ -114,6 +121,18 @@ export default function NewSessionPage() {
     const next = [...dates];
     next[i] = v;
     setDates(next);
+  }
+
+  function addFinanceur() {
+    setFinanceurs([...financeurs, { nom: "", email: "" }]);
+  }
+  function removeFinanceur(i: number) {
+    setFinanceurs(financeurs.filter((_, idx) => idx !== i));
+  }
+  function updateFinanceur(i: number, field: "nom" | "email", v: string) {
+    const next = [...financeurs];
+    next[i] = { ...next[i], [field]: v };
+    setFinanceurs(next);
   }
 
   return (
@@ -212,6 +231,47 @@ export default function NewSessionPage() {
                 className="text-sm text-primary-600 hover:underline"
               >
                 + Ajouter une date
+              </button>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Financeurs (optionnel)
+              </label>
+              <p className="text-xs text-slate-500 mb-2">
+                Nom du financeur et adresse email. Ils recevront un lien pour remplir l&apos;enquête 1 semaine après la formation.
+              </p>
+              {financeurs.map((f, i) => (
+                <div key={i} className="flex flex-col sm:flex-row gap-2 mb-2 p-3 bg-slate-50 rounded-lg">
+                  <Input
+                    placeholder="Nom du financeur"
+                    value={f.nom}
+                    onChange={(e) => updateFinanceur(i, "nom", e.target.value)}
+                    className="flex-1"
+                  />
+                  <Input
+                    type="email"
+                    placeholder="Email"
+                    value={f.email}
+                    onChange={(e) => updateFinanceur(i, "email", e.target.value)}
+                    className="flex-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeFinanceur(i)}
+                    className="p-2 text-slate-500 hover:text-red-600 self-center"
+                    title="Retirer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addFinanceur}
+                className="text-sm text-primary-600 hover:underline flex items-center gap-1"
+              >
+                <Plus className="w-4 h-4" />
+                Ajouter un financeur
               </button>
             </div>
             <Button type="submit" fullWidth disabled={loading}>

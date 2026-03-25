@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { GraduationCap, LogOut } from "lucide-react";
+import { GraduationCap, QrCode, LogOut } from "lucide-react";
 
 export function FormateurNav() {
   const pathname = usePathname();
@@ -28,6 +28,16 @@ export function FormateurNav() {
           >
             <GraduationCap className="w-4 h-4" />
             Mes sessions
+          </Link>
+          <Link
+            href="/formateur/qr"
+            className={`
+              flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition
+              ${pathname === "/formateur/qr" ? "bg-primary-50 text-primary-700" : "text-slate-600 hover:bg-slate-100"}
+            `}
+          >
+            <QrCode className="w-4 h-4" />
+            QR code
           </Link>
           <button
             type="button"

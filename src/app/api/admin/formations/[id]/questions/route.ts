@@ -8,6 +8,7 @@ const VALID_DOCUMENT_TYPES: DocumentType[] = [
   "points_cles",
   "test_fin",
   "enquete_satisfaction",
+  "enquete_satisfaction_financeur",
   "bilan_final",
 ];
 const VALID_RESPONSE_TYPES = ["qcm", "texte_libre", "liste", "echelle"] as const;

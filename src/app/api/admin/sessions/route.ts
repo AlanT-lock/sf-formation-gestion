@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 403 });
   }
   const body = await request.json();
-  const { nom, formation_id, nb_creneaux, formateur_id, dates } = body;
+  const { nom, formation_id, nb_creneaux, formateur_id, dates, financeurs } = body;
   if (!nom?.trim() || !formation_id || !nb_creneaux || nb_creneaux < 1 || !formateur_id) {
     return NextResponse.json(
       { error: "Nom, formation, nombre de créneaux et formateur requis" },
@@ -68,6 +68,20 @@ export async function POST(request: NextRequest) {
       date: d,
     }));
     await supabase.from("session_dates").insert(dateRows);
+  }
+
+  // Financeurs (nom + email)
+  if (Array.isArray(financeurs) && financeurs.length > 0) {
+    const financeurRows = financeurs
+      .filter((f: { nom?: string; email?: string }) => f?.nom?.trim() && f?.email?.trim())
+      .map((f: { nom: string; email: string }) => ({
+        session_id: sessionRow.id,
+        nom: (f.nom as string).trim(),
+        email: (f.email as string).trim(),
+      }));
+    if (financeurRows.length > 0) {
+      await supabase.from("session_financeurs").insert(financeurRows);
+    }
   }
 
   revalidatePath("/admin", "layout");

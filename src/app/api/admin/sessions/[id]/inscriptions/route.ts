@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 
@@ -66,5 +67,6 @@ export async function POST(
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  revalidatePath(`/admin/sessions/${sessionId}`);
   return NextResponse.json(data);
 }

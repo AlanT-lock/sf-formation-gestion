@@ -13,6 +13,75 @@ export async function GET(request: NextRequest) {
   const formation_id = searchParams.get("formation_id") || undefined;
   const session_id = searchParams.get("session_id") || undefined;
 
+  const { data: coldSentRaw } = await supabase
+    .from("enquete_satisfaction_froid_sent")
+    .select(`
+      session_id,
+      sent_at,
+      session:sessions(
+        id,
+        nom,
+        formation_id,
+        formation:formations(nom)
+      )
+    `)
+    .order("sent_at", { ascending: false });
+
+  type ColdSentRow = {
+    session_id: string;
+    sent_at: string;
+    session:
+      | {
+          id: string;
+          nom: string;
+          formation_id: string;
+          formation: { nom: string } | { nom: string }[] | null;
+        }
+      | {
+          id: string;
+          nom: string;
+          formation_id: string;
+          formation: { nom: string } | { nom: string }[] | null;
+        }[]
+      | null;
+  };
+  const coldSentRows = (coldSentRaw ?? []) as ColdSentRow[];
+  const filteredColdSentRows = coldSentRows.filter((row) => {
+    const s = Array.isArray(row.session) ? row.session[0] : row.session;
+    if (!s) return false;
+    if (session_id && row.session_id !== session_id) return false;
+    if (formation_id && s.formation_id !== formation_id) return false;
+    return true;
+  });
+
+  const coldSessionIds = Array.from(new Set(filteredColdSentRows.map((r) => r.session_id)));
+  const invitedByColdSession: Record<string, number> = {};
+  if (coldSessionIds.length > 0) {
+    const { data: coldInscriptions } = await supabase
+      .from("inscriptions")
+      .select("id, session_id")
+      .in("session_id", coldSessionIds);
+    for (const row of coldInscriptions ?? []) {
+      invitedByColdSession[row.session_id] = (invitedByColdSession[row.session_id] ?? 0) + 1;
+    }
+  }
+
+  const cold_mail_logs = filteredColdSentRows.map((row) => {
+    const s = Array.isArray(row.session) ? row.session[0] : row.session;
+    const formation =
+      s && Array.isArray(s.formation)
+        ? s.formation[0]
+        : (s?.formation as { nom: string } | null | undefined);
+    return {
+      session_id: row.session_id,
+      session_nom: s?.nom ?? "",
+      formation_id: s?.formation_id ?? "",
+      formation_nom: formation?.nom ?? "",
+      sent_at: row.sent_at,
+      invited_count: invitedByColdSession[row.session_id] ?? 0,
+    };
+  });
+
   const { data: formations } = await supabase
     .from("formations")
     .select("id, nom")
@@ -29,9 +98,12 @@ export async function GET(request: NextRequest) {
       formations: formations ?? [],
       sessions: [],
       questions: [],
-      stats: { total_invited: 0, total_responded: 0, response_rate: 0 },
+      stats: { total_invited: 0, total_responded: 0, response_rate: 0, sessions_count: 0 },
       responses_by_question: [],
       raw_responses: [],
+      session_stats: [],
+      echelle_averages: [],
+      cold_mail_logs,
     });
   }
 
@@ -187,6 +259,63 @@ export async function GET(request: NextRequest) {
     };
   });
 
+  const respondedBySession: Record<string, number> = {};
+  const invitedBySession: Record<string, number> = {};
+  for (const sid of filteredSessionIds) {
+    const ids = inscriptionBySession[sid] ?? [];
+    invitedBySession[sid] = ids.length;
+    respondedBySession[sid] = 0;
+  }
+  const { data: completionsData } = await supabase
+    .from("step_completions")
+    .select("inscription_id")
+    .eq("step_type", "enquete_satisfaction")
+    .in("inscription_id", inscriptionIds);
+  const respondedIds = new Set(
+    (completionsData ?? []).map((r: { inscription_id: string }) => r.inscription_id)
+  );
+  for (const i of inscriptions ?? []) {
+    if (respondedIds.has(i.id)) {
+      respondedBySession[i.session_id] = (respondedBySession[i.session_id] ?? 0) + 1;
+    }
+  }
+
+  const session_stats = filteredSessionIds.map((sid) => {
+    const invited = invitedBySession[sid] ?? 0;
+    const responded = respondedBySession[sid] ?? 0;
+    const rate = invited > 0 ? Math.round((responded / invited) * 100) : 0;
+    return {
+      session_id: sid,
+      session_nom: sessionById[sid]?.nom ?? "",
+      invited,
+      responded,
+      response_rate: rate,
+    };
+  });
+
+  const echelleAverages: { question_id: string; libelle: string; avg: number; count: number }[] = [];
+  for (const q of questions) {
+    if (q.type_reponse !== "echelle") continue;
+    const qReponses = reponsesList.filter((r) => r.question_id === q.id);
+    let sum = 0;
+    let count = 0;
+    for (const r of qReponses) {
+      const n = parseFloat(r.valeur ?? "");
+      if (!isNaN(n)) {
+        sum += n;
+        count++;
+      }
+    }
+    if (count > 0) {
+      echelleAverages.push({
+        question_id: q.id,
+        libelle: q.libelle,
+        avg: Math.round((sum / count) * 100) / 100,
+        count,
+      });
+    }
+  }
+
   return NextResponse.json({
     formations: formations ?? [],
     sessions: (sessions ?? []).map((s: { id: string; nom: string; formation_id: string; formation?: { nom: string } | { nom: string }[] }) => ({
@@ -207,5 +336,8 @@ export async function GET(request: NextRequest) {
     },
     responses_by_question: responses_by_question.sort((a, b) => a.ordre - b.ordre),
     raw_responses,
+    session_stats,
+    echelle_averages: echelleAverages,
+    cold_mail_logs,
   });
 }

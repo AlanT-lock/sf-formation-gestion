@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
@@ -17,8 +17,17 @@ import {
   PenLine,
   RefreshCw,
   Edit3,
+  Users,
+  Plus,
+  Trash2,
+  Eye,
 } from "lucide-react";
 import type { StepType } from "@/types/database";
+
+function suggestedUsername(prenom: string, nom: string) {
+  if (!prenom.trim() || !nom.trim()) return "";
+  return `${prenom.trim().toLowerCase()}.${nom.trim().toLowerCase()}`.replace(/\s+/g, ".");
+}
 
 const STEP_LABELS: Record<StepType, string> = {
   test_pre: "Test de pré-formation",
@@ -63,7 +72,7 @@ interface Session {
   formation_documents?: FormationDocument[];
   session_creneaux: Creneau[];
   session_step_triggers: Trigger[];
-  inscriptions: { id: string; stagiaire_id: string; stagiaire: { nom: string; prenom: string } | null }[];
+  inscriptions: { id: string; stagiaire_id: string; analyse_besoins_texte: string | null; stagiaire: { nom: string; prenom: string; users?: { username: string } | { username: string }[] | null } | null }[];
   step_completions?: StepCompletion[];
 }
 
@@ -73,9 +82,24 @@ export default function FormateurSessionPage() {
   const id = params.id as string;
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"emargement" | "etapes" | "stagiaires">("emargement");
   const [triggering, setTriggering] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [creneauTimes, setCreneauTimes] = useState<Record<string, { debut?: string; fin?: string }>>({});
+  // Stagiaires
+  const [addMode, setAddMode] = useState<"existant" | "nouveau">("existant");
+  const [stagiaires, setStagiaires] = useState<{ id: string; nom: string; prenom: string }[]>([]);
+  const [selectedStagiaire, setSelectedStagiaire] = useState("");
+  const [newNom, setNewNom] = useState("");
+  const [newPrenom, setNewPrenom] = useState("");
+  const [newUsername, setNewUsername] = useState("");
+  const [analyseBesoins, setAnalyseBesoins] = useState("");
+  const [stagiairesLoading, setStagiairesLoading] = useState(false);
+  const [inscriptionLoading, setInscriptionLoading] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editAnalyse, setEditAnalyse] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const usernameManuallyEdited = useRef(false);
 
   const fetchSession = useCallback(async () => {
     try {
@@ -97,9 +121,175 @@ export default function FormateurSessionPage() {
     fetchSession();
   }, [fetchSession]);
 
+  const suggestion = suggestedUsername(newPrenom, newNom);
+  useEffect(() => {
+    if (!usernameManuallyEdited.current && suggestion) setNewUsername(suggestion);
+  }, [suggestion]);
+
+  useEffect(() => {
+    if (activeTab !== "stagiaires") return;
+    (async () => {
+      setStagiairesLoading(true);
+      try {
+        const res = await fetch("/api/formateur/stagiaires");
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setStagiaires(data.map((s: { id: string; nom: string; prenom: string }) => ({ id: s.id, nom: s.nom, prenom: s.prenom })));
+        }
+      } finally {
+        setStagiairesLoading(false);
+      }
+    })();
+  }, [activeTab]);
+
   function handleRefresh() {
     setRefreshing(true);
     fetchSession();
+  }
+
+  const alreadyInscrits = (session?.inscriptions ?? []).map((i) => i.stagiaire_id);
+  const availableStagiaires = stagiaires.filter((s) => !alreadyInscrits.includes(s.id));
+
+  async function handleAddExistant() {
+    if (!selectedStagiaire) {
+      toast.error("Choisissez un stagiaire");
+      return;
+    }
+    setInscriptionLoading(true);
+    try {
+      const res = await fetch(`/api/formateur/sessions/${id}/inscriptions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stagiaire_id: selectedStagiaire,
+          analyse_besoins_texte: analyseBesoins.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Erreur");
+        return;
+      }
+      toast.success("Stagiaire inscrit");
+      setSession((prev) => prev ? { ...prev, inscriptions: [...prev.inscriptions, data] } : null);
+      setSelectedStagiaire("");
+      setAnalyseBesoins("");
+    } catch {
+      toast.error("Erreur réseau");
+    } finally {
+      setInscriptionLoading(false);
+    }
+  }
+
+  async function handleCreateAndAdd() {
+    if (!newNom.trim() || !newPrenom.trim()) {
+      toast.error("Nom et prénom requis");
+      return;
+    }
+    const identifiant = (newUsername || suggestion).trim().toLowerCase().replace(/\s+/g, ".");
+    if (!identifiant) {
+      toast.error("Identifiant requis");
+      return;
+    }
+    setInscriptionLoading(true);
+    try {
+      const resCreate = await fetch("/api/formateur/stagiaires", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nom: newNom.trim(),
+          prenom: newPrenom.trim(),
+          username: identifiant,
+        }),
+      });
+      const dataCreate = await resCreate.json();
+      if (!resCreate.ok) {
+        toast.error(dataCreate.error || "Erreur création");
+        return;
+      }
+      const stagiaireId = dataCreate.id;
+      const resInsc = await fetch(`/api/formateur/sessions/${id}/inscriptions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stagiaire_id: stagiaireId,
+          analyse_besoins_texte: analyseBesoins.trim() || null,
+        }),
+      });
+      const dataInsc = await resInsc.json();
+      if (!resInsc.ok) {
+        toast.error(dataInsc.error || "Erreur inscription");
+        return;
+      }
+      toast.success("Stagiaire créé et inscrit");
+      setSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              inscriptions: [
+                ...prev.inscriptions,
+                {
+                  ...dataInsc,
+                  stagiaire: { id: stagiaireId, nom: newNom.trim(), prenom: newPrenom.trim(), users: { username: identifiant } },
+                },
+              ],
+            }
+          : null
+      );
+      setStagiaires((prev) => [...prev, { id: stagiaireId, nom: newNom.trim(), prenom: newPrenom.trim() }]);
+      setNewNom("");
+      setNewPrenom("");
+      setNewUsername("");
+      setAnalyseBesoins("");
+      usernameManuallyEdited.current = false;
+    } catch {
+      toast.error("Erreur réseau");
+    } finally {
+      setInscriptionLoading(false);
+    }
+  }
+
+  async function handleDelete(inscriptionId: string) {
+    setDeletingId(inscriptionId);
+    try {
+      const res = await fetch(`/api/formateur/sessions/${id}/inscriptions/${inscriptionId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error || "Erreur");
+        return;
+      }
+      toast.success("Stagiaire retiré de la session");
+      setSession((prev) => prev ? { ...prev, inscriptions: prev.inscriptions.filter((i) => i.id !== inscriptionId) } : null);
+    } catch {
+      toast.error("Erreur réseau");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function handleUpdateAnalyse(inscriptionId: string) {
+    try {
+      const res = await fetch(`/api/formateur/inscriptions/${inscriptionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analyse_besoins_texte: editAnalyse.trim() || null }),
+      });
+      if (!res.ok) throw new Error();
+      setSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              inscriptions: prev.inscriptions.map((i) =>
+                i.id === inscriptionId ? { ...i, analyse_besoins_texte: editAnalyse.trim() || null } : i
+              ),
+            }
+          : null
+      );
+      setEditingId(null);
+      toast.success("Modifié");
+    } catch {
+      toast.error("Erreur");
+    }
   }
 
   async function triggerStep(stepType: StepType, creneauId?: string) {
@@ -114,6 +304,35 @@ export default function FormateurSessionPage() {
       if (!res.ok) throw new Error(data.error || "Erreur");
       toast.success("Étape envoyée aux stagiaires");
       fetchSession();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erreur");
+    } finally {
+      setTriggering(null);
+    }
+  }
+
+  async function handleFinCreneau(creneauId: string) {
+    const now = new Date().toISOString();
+    await updateCreneauTime(creneauId, "heure_fin", now);
+  }
+
+  async function handleDemanderEmargement(c: Creneau, index: number) {
+    setTriggering("emargement" + c.id);
+    try {
+      const now = new Date().toISOString();
+      let heureFin = c.heure_fin;
+
+      if (!heureFin) {
+        await updateCreneauTime(c.id, "heure_fin", now);
+        heureFin = now;
+      }
+
+      const nextCreneau = creneaux[index + 1];
+      if (nextCreneau) {
+        await updateCreneauTime(nextCreneau.id, "heure_debut", heureFin);
+      }
+
+      await triggerStep("emargement", c.id);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erreur");
     } finally {
@@ -218,8 +437,38 @@ export default function FormateurSessionPage() {
         <p className="text-slate-600 mt-1">
           {session.formation?.nom ?? "—"} • {session.inscriptions?.length ?? 0} stagiaire(s)
         </p>
+        <div className="flex flex-wrap gap-2 mt-4">
+          <Button
+            variant={activeTab === "emargement" ? "primary" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("emargement")}
+            className="gap-1.5"
+          >
+            <Clock className="w-4 h-4" />
+            Émargement
+          </Button>
+          <Button
+            variant={activeTab === "etapes" ? "primary" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("etapes")}
+            className="gap-1.5"
+          >
+            <FileCheck className="w-4 h-4" />
+            Étapes à déclencher
+          </Button>
+          <Button
+            variant={activeTab === "stagiaires" ? "primary" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("stagiaires")}
+            className="gap-1.5"
+          >
+            <Users className="w-4 h-4" />
+            Stagiaires
+          </Button>
+        </div>
       </div>
 
+      {activeTab === "emargement" && (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -227,12 +476,11 @@ export default function FormateurSessionPage() {
             Créneaux d&apos;émargement
           </CardTitle>
           <p className="text-sm text-slate-500 mt-1">
-            Saisissez l&apos;heure de début en début de créneau, puis validez l&apos;heure de fin en fin de créneau.
-            Ensuite déclenchez l&apos;émargement pour que les stagiaires signent.
+            Saisissez l&apos;heure de début en début de créneau. En fin de créneau, cliquez sur « Fin du créneau » pour enregistrer automatiquement l&apos;heure de fin. Puis « Envoyer l&apos;émargement » envoie aux stagiaires et préremplit l&apos;heure de début du créneau suivant.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
-          {creneaux.map((c) => (
+          {creneaux.map((c, index) => (
             <div
               key={c.id}
               className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 bg-slate-50 rounded-lg"
@@ -271,21 +519,33 @@ export default function FormateurSessionPage() {
                 </div>
                 <Button
                   size="sm"
+                  variant="outline"
                   disabled={!!triggersByCreneau[c.id] || triggering !== null}
-                  onClick={() => triggerStep("emargement", c.id)}
+                  onClick={() => handleFinCreneau(c.id)}
+                  title="Enregistrer l'heure de fin du créneau à maintenant"
+                >
+                  Fin du créneau
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={!!triggersByCreneau[c.id] || triggering !== null}
+                  onClick={() => handleDemanderEmargement(c, index)}
                 >
                   {triggersByCreneau[c.id]
                     ? "Émargement envoyé"
                     : triggering === "emargement" + c.id
                     ? "Envoi..."
-                    : "Demander émargement"}
+                    : "Envoyer l'émargement"}
                 </Button>
               </div>
             </div>
           ))}
         </CardContent>
       </Card>
+      )}
 
+      {activeTab === "etapes" && (
+      <>
       <Card>
         <CardHeader>
           <CardTitle>Étapes à déclencher</CardTitle>
@@ -386,8 +646,11 @@ export default function FormateurSessionPage() {
                   <ul className="divide-y divide-slate-100">
                     {inscriptions.map((ins) => {
                       const done = isCompleted(ins.id, doc.step_type, doc.creneau_id);
-                      const nomStagiaire = ins.stagiaire
-                        ? `${ins.stagiaire.prenom} ${ins.stagiaire.nom}`
+                      const s = ins.stagiaire;
+                      const usersRef = Array.isArray(s?.users) ? s?.users[0] : s?.users;
+                      const username = usersRef?.username ?? null;
+                      const nomStagiaire = s
+                        ? `${s.prenom} ${s.nom}${username ? ` (${username})` : ""}`
                         : "—";
                       const isBilanFormateur =
                         doc.step_type === "bilan_final" &&
@@ -401,6 +664,13 @@ export default function FormateurSessionPage() {
                         >
                           <span className="text-sm text-slate-800">{nomStagiaire}</span>
                           <div className="flex items-center gap-2">
+                            <Link
+                              href={`/formateur/sessions/${id}/stagiaire/${ins.id}`}
+                              className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              Voir les réponses
+                            </Link>
                             {isBilanFormateur && (
                               <Link
                                 href={`/formateur/sessions/${id}/bilan/${ins.id}`}
@@ -427,6 +697,219 @@ export default function FormateurSessionPage() {
                 </div>
               );
             })}
+          </CardContent>
+        </Card>
+      )}
+      </>
+      )}
+
+      {activeTab === "stagiaires" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Stagiaires inscrits ({inscriptions.length})
+            </CardTitle>
+            <p className="text-sm text-slate-500 mt-1">
+              Ajoutez ou supprimez des stagiaires. L&apos;analyse des besoins peut être saisie à l&apos;inscription ou modifiée ensuite.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Formulaire d'ajout */}
+            <div className="p-4 bg-slate-50 rounded-lg space-y-4">
+              <div className="flex gap-2">
+                <Button
+                  variant={addMode === "existant" ? "primary" : "outline"}
+                  size="sm"
+                  onClick={() => setAddMode("existant")}
+                >
+                  Stagiaire existant
+                </Button>
+                <Button
+                  variant={addMode === "nouveau" ? "primary" : "outline"}
+                  size="sm"
+                  onClick={() => setAddMode("nouveau")}
+                >
+                  Créer un stagiaire
+                </Button>
+              </div>
+
+              {addMode === "existant" ? (
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1 space-y-2">
+                    <label className="block text-sm font-medium text-slate-700">Choisir un stagiaire</label>
+                    <select
+                      value={selectedStagiaire}
+                      onChange={(e) => setSelectedStagiaire(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 text-sm"
+                    >
+                      <option value="">Choisir...</option>
+                      {availableStagiaires.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.prenom} {s.nom}
+                        </option>
+                      ))}
+                      {stagiairesLoading && availableStagiaires.length === 0 && (
+                        <option value="">Chargement...</option>
+                      )}
+                    </select>
+                    {!stagiairesLoading && stagiaires.length > 0 && availableStagiaires.length === 0 && (
+                      <p className="text-xs text-amber-600 mt-1">Tous les stagiaires sont déjà inscrits. Créez-en un nouveau.</p>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <Input
+                      label="Analyse des besoins (si déjà formé, pourquoi refaire ?)"
+                      value={analyseBesoins}
+                      onChange={(e) => setAnalyseBesoins(e.target.value)}
+                      placeholder="Texte libre..."
+                      className="text-sm"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      onClick={handleAddExistant}
+                      disabled={inscriptionLoading || !selectedStagiaire}
+                      className="flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Inscrire
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Input
+                      label="Prénom"
+                      value={newPrenom}
+                      onChange={(e) => setNewPrenom(e.target.value)}
+                      placeholder="Jean"
+                    />
+                    <Input
+                      label="Nom"
+                      value={newNom}
+                      onChange={(e) => setNewNom(e.target.value)}
+                      placeholder="Dupont"
+                    />
+                  </div>
+                  <div>
+                    <Input
+                      label="Identifiant de connexion"
+                      value={newUsername}
+                      onChange={(e) => {
+                        usernameManuallyEdited.current = true;
+                        setNewUsername(e.target.value);
+                      }}
+                      placeholder={suggestion || "jean.dupont"}
+                      className="text-sm"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Suggestion : <span className="font-mono">{suggestion || "—"}</span>
+                    </p>
+                  </div>
+                  <Input
+                    label="Analyse des besoins (si déjà formé, pourquoi refaire ?)"
+                    value={analyseBesoins}
+                    onChange={(e) => setAnalyseBesoins(e.target.value)}
+                    placeholder="Texte libre..."
+                    className="text-sm"
+                  />
+                  <Button
+                    onClick={handleCreateAndAdd}
+                    disabled={inscriptionLoading || !newNom.trim() || !newPrenom.trim()}
+                    className="flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Créer et inscrire
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Liste des inscrits */}
+            {inscriptions.length === 0 ? (
+              <p className="text-slate-500 py-8 text-center">Aucun stagiaire inscrit.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {inscriptions.map((ins) => {
+                  const s = ins.stagiaire;
+                  const usersRef = Array.isArray(s?.users) ? s?.users[0] : s?.users;
+                  const username = usersRef?.username ?? "—";
+                  const nomComplet = s ? `${s.prenom} ${s.nom}` : "—";
+                  const analyse = ins.analyse_besoins_texte ?? "";
+                  const isEditing = editingId === ins.id;
+                  return (
+                    <li key={ins.id} className="py-4 first:pt-0">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-slate-800">{nomComplet}</span>
+                            <code className="text-sm text-slate-600 bg-slate-100 px-2 py-1 rounded">{username}</code>
+                            <Link
+                              href={`/formateur/sessions/${id}/stagiaire/${ins.id}`}
+                              className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              Voir les réponses
+                            </Link>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => handleDelete(ins.id)}
+                            disabled={deletingId !== null}
+                          >
+                            {deletingId === ins.id ? "..." : <Trash2 className="w-4 h-4" />}
+                          </Button>
+                        </div>
+                        {isEditing ? (
+                          <div className="flex gap-2 items-end">
+                            <input
+                              type="text"
+                              value={editAnalyse}
+                              onChange={(e) => setEditAnalyse(e.target.value)}
+                              className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                              placeholder="Analyse des besoins..."
+                            />
+                            <Button size="sm" onClick={() => handleUpdateAnalyse(ins.id)}>
+                              Enregistrer
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setEditingId(null);
+                                setEditAnalyse(analyse);
+                              }}
+                            >
+                              Annuler
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-sm text-slate-600">
+                              Analyse des besoins : {analyse || "—"}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingId(ins.id);
+                                setEditAnalyse(analyse);
+                              }}
+                              className="text-xs text-primary-600 hover:underline"
+                            >
+                              Modifier l&apos;analyse des besoins
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </CardContent>
         </Card>
       )}

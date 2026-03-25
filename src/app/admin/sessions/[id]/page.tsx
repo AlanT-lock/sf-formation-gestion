@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { ArrowLeft, Calendar, Download } from "lucide-react";
 import { InscriptionsBlock } from "@/components/admin/InscriptionsBlock";
 import { AdminCreneauxBlock } from "@/components/admin/AdminCreneauxBlock";
+import { FinanceursBlock } from "@/components/admin/FinanceursBlock";
 
 export const dynamic = "force-dynamic";
 
@@ -117,6 +118,8 @@ export default async function AdminSessionDetailPage({
       {creneaux.length > 0 && (
         <AdminCreneauxBlock sessionId={id} creneaux={creneaux} />
       )}
+
+      <FinanceursBlock sessionId={id} />
 
       <InscriptionsBlock
         sessionId={id}

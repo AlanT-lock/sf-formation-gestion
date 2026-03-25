@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   Filter,
+  AlertTriangle,
 } from "lucide-react";
 
 interface Formation {
@@ -35,6 +36,30 @@ interface Stats {
   sessions_count: number;
 }
 
+interface SessionStat {
+  session_id: string;
+  session_nom: string;
+  invited: number;
+  responded: number;
+  response_rate: number;
+}
+
+interface EchelleAverage {
+  question_id: string;
+  libelle: string;
+  avg: number;
+  count: number;
+}
+
+interface ColdMailLog {
+  session_id: string;
+  session_nom: string;
+  formation_id: string;
+  formation_nom: string;
+  sent_at: string;
+  invited_count: number;
+}
+
 interface QuestionResponse {
   id: string;
   formation_id: string;
@@ -54,6 +79,9 @@ interface SatisfactionData {
   stats: Stats;
   responses_by_question: QuestionResponse[];
   raw_responses: { question_id: string; question_libelle: string; valeur: string; session_nom: string }[];
+  session_stats?: SessionStat[];
+  echelle_averages?: EchelleAverage[];
+  cold_mail_logs?: ColdMailLog[];
 }
 
 export default function AdminSatisfactionPage() {
@@ -206,6 +234,48 @@ export default function AdminSatisfactionPage() {
         </Card>
       ) : (
         <>
+          {/* Alertes : problèmes à ne pas manquer */}
+          {data.stats.total_invited > 0 && (() => {
+            const alerts: { type: "warning" | "danger"; msg: string }[] = [];
+            if (data.stats.response_rate < 70)
+              alerts.push({
+                type: data.stats.response_rate < 50 ? "danger" : "warning",
+                msg: `Taux de réponse global faible : ${data.stats.response_rate} % (objectif recommandé : ≥ 70 %)`,
+              });
+            (data.echelle_averages ?? []).forEach((e) => {
+              if (e.avg < 3.5)
+                alerts.push({
+                  type: e.avg < 2.5 ? "danger" : "warning",
+                  msg: `Note moyenne basse sur « ${e.libelle} » : ${e.avg}/5`,
+                });
+            });
+            (data.session_stats ?? []).forEach((s) => {
+              if (s.invited > 0 && s.response_rate < 50)
+                alerts.push({
+                  type: "warning",
+                  msg: `Session « ${s.session_nom} » : seulement ${s.response_rate} % de réponses (${s.responded}/${s.invited})`,
+                });
+            });
+            if (alerts.length === 0) return null;
+            return (
+              <div className="space-y-2">
+                {alerts.map((a, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-center gap-3 p-4 rounded-lg border-2 ${
+                      a.type === "danger"
+                        ? "bg-red-50 border-red-300 text-red-900"
+                        : "bg-amber-50 border-amber-300 text-amber-900"
+                    }`}
+                  >
+                    <AlertTriangle className="w-6 h-6 shrink-0" />
+                    <p className="font-medium">{a.msg}</p>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
           {/* Indicateurs clés */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
@@ -234,15 +304,20 @@ export default function AdminSatisfactionPage() {
                 </div>
               </CardContent>
             </Card>
-            <Card>
+            <Card className={data.stats.response_rate < 70 ? "ring-2 ring-amber-400 bg-amber-50/50" : ""}>
               <CardContent className="pt-5">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-amber-50">
-                    <Percent className="w-6 h-6 text-amber-600" />
+                  <div className={`p-2 rounded-lg ${data.stats.response_rate < 70 ? "bg-amber-100" : "bg-amber-50"}`}>
+                    <Percent className={`w-6 h-6 ${data.stats.response_rate < 70 ? "text-amber-700" : "text-amber-600"}`} />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-slate-800">{data.stats.response_rate} %</p>
+                    <p className={`text-2xl font-bold ${data.stats.response_rate < 70 ? "text-amber-800" : "text-slate-800"}`}>
+                      {data.stats.response_rate} %
+                    </p>
                     <p className="text-sm text-slate-600">Taux de réponse</p>
+                    {data.stats.response_rate < 70 && (
+                      <p className="text-xs text-amber-700 mt-1 font-medium">Objectif : ≥ 70 %</p>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -261,6 +336,120 @@ export default function AdminSatisfactionPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Taux par session et notes moyennes (échelles) */}
+          {((data.session_stats?.length ?? 0) > 0 || (data.echelle_averages?.length ?? 0) > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {data.session_stats && data.session_stats.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">Taux de réponse par session</CardTitle>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Sessions avec un taux &lt; 50 % sont à surveiller.
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {data.session_stats.map((s) => (
+                        <div
+                          key={s.session_id}
+                          className={`flex items-center justify-between py-2 px-3 rounded-lg ${
+                            s.response_rate < 50 ? "bg-amber-50 border border-amber-200" : "bg-slate-50"
+                          }`}
+                        >
+                          <span className="text-sm font-medium text-slate-800 truncate flex-1 mr-2">
+                            {s.session_nom}
+                          </span>
+                          <span
+                            className={`text-sm font-bold shrink-0 ${
+                              s.response_rate < 50 ? "text-amber-700" : "text-slate-700"
+                            }`}
+                          >
+                            {s.response_rate} % ({s.responded}/{s.invited})
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              {data.echelle_averages && data.echelle_averages.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">Notes moyennes (questions échelle)</CardTitle>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Questions notées sur 5. Une note &lt; 3,5 mérite attention.
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {data.echelle_averages.map((e) => (
+                        <div
+                          key={e.question_id}
+                          className={`flex items-center justify-between py-2 px-3 rounded-lg ${
+                            e.avg < 3.5 ? "bg-amber-50 border border-amber-200" : "bg-slate-50"
+                          }`}
+                        >
+                          <span className="text-sm font-medium text-slate-800 truncate flex-1 mr-2">
+                            {e.libelle}
+                          </span>
+                          <span
+                            className={`text-sm font-bold shrink-0 ${
+                              e.avg < 3.5 ? "text-amber-700" : "text-slate-700"
+                            }`}
+                          >
+                            {e.avg}/5 ({e.count} réponses)
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* Historique des envois à froid */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Historique des emails d&apos;enquête à froid</CardTitle>
+              <p className="text-sm text-slate-500 mt-1">
+                Envois automatiques réalisés à J+14 après la dernière date de session.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {(data.cold_mail_logs ?? []).length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  Aucun envoi d&apos;enquête à froid trouvé pour ce filtre.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border border-slate-200 rounded-lg overflow-hidden">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className="text-left px-3 py-2 font-medium text-slate-700">Date d&apos;envoi</th>
+                        <th className="text-left px-3 py-2 font-medium text-slate-700">Session</th>
+                        <th className="text-left px-3 py-2 font-medium text-slate-700">Formation</th>
+                        <th className="text-right px-3 py-2 font-medium text-slate-700">Stagiaires ciblés</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(data.cold_mail_logs ?? []).map((log) => (
+                        <tr key={`${log.session_id}-${log.sent_at}`} className="border-t border-slate-100">
+                          <td className="px-3 py-2 text-slate-800">
+                            {new Date(log.sent_at).toLocaleString("fr-FR")}
+                          </td>
+                          <td className="px-3 py-2 text-slate-800">{log.session_nom || "—"}</td>
+                          <td className="px-3 py-2 text-slate-700">{log.formation_nom || "—"}</td>
+                          <td className="px-3 py-2 text-right text-slate-700">{log.invited_count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {data.stats.total_invited === 0 ? (
             <Card>

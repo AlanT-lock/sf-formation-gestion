@@ -37,12 +37,29 @@ export function InscriptionsBlock({
   const [selectedStagiaire, setSelectedStagiaire] = useState("");
   const [analyseBesoins, setAnalyseBesoins] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingList, setLoadingList] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAnalyse, setEditAnalyse] = useState("");
 
   useEffect(() => {
     setInscriptions(initialInscriptions);
   }, [initialInscriptions]);
+
+  // Recharger les inscriptions depuis l'API à chaque montage (évite le cache obsolète)
+  useEffect(() => {
+    (async () => {
+      setLoadingList(true);
+      try {
+        const res = await fetch(`/api/admin/sessions/${sessionId}/inscriptions`);
+        const data = await res.json();
+        if (res.ok && Array.isArray(data)) {
+          setInscriptions(data);
+        }
+      } finally {
+        setLoadingList(false);
+      }
+    })();
+  }, [sessionId]);
 
   useEffect(() => {
     (async () => {
@@ -139,7 +156,9 @@ export function InscriptionsBlock({
           </div>
         </div>
 
-        {!inscriptions.length ? (
+        {loadingList ? (
+          <p className="text-slate-500 text-sm py-4">Chargement...</p>
+        ) : !inscriptions.length ? (
           <p className="text-slate-500 text-sm py-4">Aucun stagiaire inscrit.</p>
         ) : (
           <ul className="divide-y divide-slate-100">

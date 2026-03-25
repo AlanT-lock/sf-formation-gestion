@@ -1,12 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CheckCircle2, AlertCircle, FileText } from "lucide-react";
 import type { DocumentType } from "@/types/database";
+
+interface Question {
+  id: string;
+  libelle: string;
+  ordre: number;
+  type_reponse: string;
+  options: Record<string, unknown> | null;
+}
 
 interface ReponsesData {
   inscription: { id: string; session_id: string; analyse_besoins_texte: string | null };
@@ -16,7 +24,8 @@ interface ReponsesData {
   documents: {
     document_type: DocumentType;
     nom_affiche: string;
-    questions: { id: string; libelle: string; ordre: number }[];
+    ordre?: number;
+    questions: Question[];
     reponses: Record<string, string>;
   }[];
   emargements: { creneau_ordre: number | null; signed_at: string; signature_data: string }[];
@@ -24,7 +33,6 @@ interface ReponsesData {
 
 export default function AdminStagiaireReponsesPage() {
   const params = useParams();
-  const router = useRouter();
   const sessionId = params.id as string;
   const inscriptionId = params.inscriptionId as string;
   const [data, setData] = useState<ReponsesData | null>(null);
@@ -140,31 +148,93 @@ export default function AdminStagiaireReponsesPage() {
       )}
 
       {/* Documents (tests) avec questions / réponses */}
-      {data.documents.map((doc) => (
-        <Card key={doc.document_type}>
-          <CardHeader>
-            <CardTitle>{doc.nom_affiche}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {doc.questions.length === 0 ? (
-              <p className="text-slate-500 text-sm">Aucune question.</p>
-            ) : (
-              <ul className="space-y-3">
-                {doc.questions
-                  .sort((a, b) => a.ordre - b.ordre)
-                  .map((q) => (
-                    <li key={q.id} className="border-b border-slate-100 pb-3 last:border-0">
-                      <p className="text-sm font-medium text-slate-800">{q.libelle}</p>
-                      <p className="text-slate-600 mt-1">
-                        {doc.reponses[q.id] ?? "—"}
-                      </p>
-                    </li>
-                  ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      ))}
+      {[...data.documents]
+        .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0))
+        .map((doc) => {
+          const nbQuestions = doc.questions.length;
+          const nbReponses = doc.questions.filter((q) => doc.reponses[q.id] != null && String(doc.reponses[q.id]).trim() !== "").length;
+          const completed = nbQuestions > 0 && nbReponses === nbQuestions;
+          const partial = nbReponses > 0 && nbReponses < nbQuestions;
+          return (
+            <Card key={doc.document_type} className={!completed ? "border-amber-200 bg-amber-50/30" : ""}>
+              <CardHeader className="flex flex-row items-start justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  {completed ? (
+                    <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+                  ) : partial ? (
+                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                  ) : (
+                    <FileText className="w-5 h-5 text-slate-400 shrink-0" />
+                  )}
+                  <CardTitle>{doc.nom_affiche}</CardTitle>
+                </div>
+                <span
+                  className={`text-xs font-medium px-2 py-1 rounded shrink-0 ${
+                    completed
+                      ? "bg-green-100 text-green-800"
+                      : partial
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {nbReponses}/{nbQuestions} rempli{nbReponses !== 1 ? "s" : ""}
+                </span>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {doc.questions.length === 0 ? (
+                  <p className="text-slate-500 text-sm">Aucune question.</p>
+                ) : (
+                  <ul className="space-y-4">
+                    {doc.questions
+                      .sort((a, b) => a.ordre - b.ordre)
+                      .map((q) => {
+                        const valeur = doc.reponses[q.id];
+                        const hasReponse = valeur != null && String(valeur).trim() !== "";
+                        const typeLabel =
+                          q.type_reponse === "qcm"
+                            ? "QCM"
+                            : q.type_reponse === "echelle"
+                            ? "Échelle"
+                            : q.type_reponse === "liste"
+                            ? "Liste"
+                            : "Texte";
+                        return (
+                          <li
+                            key={q.id}
+                            className={`p-3 rounded-lg border ${
+                              hasReponse ? "bg-slate-50/50 border-slate-200" : "border-amber-200 bg-amber-50/20"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-medium text-slate-800">{q.libelle}</p>
+                              <span className="text-xs text-slate-500 shrink-0">{typeLabel}</span>
+                            </div>
+                            <p className={`mt-2 text-slate-700 ${q.type_reponse === "texte_libre" ? "whitespace-pre-wrap" : ""}`}>
+                              {hasReponse ? valeur : <span className="text-amber-700 italic">Non renseigné</span>}
+                            </p>
+                            {q.type_reponse === "echelle" && hasReponse && !isNaN(parseFloat(valeur)) && (
+                              <div className="mt-2 flex gap-1">
+                                {[1, 2, 3, 4, 5].map((n) => (
+                                  <div
+                                    key={n}
+                                    className={`w-8 h-8 rounded flex items-center justify-center text-sm font-medium ${
+                                      n <= parseFloat(valeur) ? "bg-primary-100 text-primary-800" : "bg-slate-100 text-slate-400"
+                                    }`}
+                                  >
+                                    {n}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </li>
+                        );
+                      })}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
 
       <Link href={`/admin/sessions/${sessionId}`}>
         <Button variant="outline" className="flex items-center gap-2">

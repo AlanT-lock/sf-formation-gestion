@@ -13,6 +13,7 @@ export type DocumentType =
   | "points_cles"
   | "test_fin"
   | "enquete_satisfaction"
+  | "enquete_satisfaction_financeur"
   | "bilan_final";
 
 export type QuestionResponseType = "qcm" | "texte_libre" | "liste" | "echelle";
@@ -20,6 +21,7 @@ export type QuestionResponseType = "qcm" | "texte_libre" | "liste" | "echelle";
 export interface User {
   id: string;
   username: string;
+  email: string | null;
   password_hash: string;
   role: UserRole;
   first_login_done: boolean;
@@ -124,6 +126,14 @@ export interface Emargement {
   creneau_id: string;
   signed_at: string;
   signature_data: string;
+  created_at: string;
+}
+
+export interface SessionFinanceur {
+  id: string;
+  session_id: string;
+  nom: string;
+  email: string;
   created_at: string;
 }
 

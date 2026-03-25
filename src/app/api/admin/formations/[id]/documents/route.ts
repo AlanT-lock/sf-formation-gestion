@@ -42,7 +42,7 @@ export async function PATCH(
   const updates: { nom_affiche?: string; ordre?: number; rempli_par?: string } = {};
   if (typeof nom_affiche === "string") updates.nom_affiche = nom_affiche.trim();
   if (typeof ordre === "number") updates.ordre = ordre;
-  if (rempli_par === "stagiaire" || rempli_par === "formateur") updates.rempli_par = rempli_par;
+  if (rempli_par === "stagiaire" || rempli_par === "formateur" || rempli_par === "financeur") updates.rempli_par = rempli_par;
   if (Object.keys(updates).length === 0) {
     return NextResponse.json(
       { error: "nom_affiche, ordre ou rempli_par requis" },

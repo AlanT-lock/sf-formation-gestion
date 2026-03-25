@@ -5,6 +5,7 @@ import {
   createToken,
   setAuthCookie,
 } from "@/lib/auth";
+import type { UserRole } from "@/types/database";
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,14 +18,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const searchUsername = username.trim().toLowerCase();
-    const { data: user, error } = await supabase
+    const search = username.trim().toLowerCase();
+    // Connexion par nom d'utilisateur ou par email
+    let user: { id: string; username: string; email: string | null; password_hash: string; role: string; first_login_done: boolean } | null = null;
+    const { data: byUsername } = await supabase
       .from("users")
-      .select("id, username, password_hash, role, first_login_done")
-      .ilike("username", searchUsername)
-      .single();
-
-    if (error || !user) {
+      .select("id, username, email, password_hash, role, first_login_done")
+      .ilike("username", search)
+      .maybeSingle();
+    if (byUsername) {
+      user = byUsername;
+    } else {
+      const { data: byEmail } = await supabase
+        .from("users")
+        .select("id, username, email, password_hash, role, first_login_done")
+        .ilike("email", search)
+        .maybeSingle();
+      user = byEmail ?? null;
+    }
+    if (!user) {
       return NextResponse.json(
         { error: "Identifiant ou mot de passe incorrect" },
         { status: 401 }
@@ -46,7 +58,7 @@ export async function POST(request: NextRequest) {
     const token = await createToken({
       userId: user.id,
       username: user.username,
-      role: user.role,
+      role: user.role as UserRole,
       firstLoginDone: user.first_login_done ?? false,
     });
     await setAuthCookie(token);
