@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
+import { toDatetimeLocalValue } from "@/lib/date";
 import toast from "react-hot-toast";
 
 interface Creneau {
@@ -70,11 +71,7 @@ export function AdminCreneauxBlock({ sessionId, creneaux: initialCreneaux }: Adm
                   <label className="text-xs text-slate-500">Début</label>
                   <input
                     type="datetime-local"
-                    defaultValue={
-                      c.heure_debut
-                        ? new Date(c.heure_debut).toISOString().slice(0, 16)
-                        : ""
-                    }
+                    defaultValue={toDatetimeLocalValue(c.heure_debut)}
                     onChange={(e) => {
                       const val = e.target.value ? new Date(e.target.value).toISOString() : "";
                       updateCreneauTime(c.id, "heure_debut", val);
@@ -86,11 +83,7 @@ export function AdminCreneauxBlock({ sessionId, creneaux: initialCreneaux }: Adm
                   <label className="text-xs text-slate-500">Fin</label>
                   <input
                     type="datetime-local"
-                    defaultValue={
-                      c.heure_fin
-                        ? new Date(c.heure_fin).toISOString().slice(0, 16)
-                        : ""
-                    }
+                    defaultValue={toDatetimeLocalValue(c.heure_fin)}
                     onChange={(e) => {
                       const val = e.target.value ? new Date(e.target.value).toISOString() : "";
                       updateCreneauTime(c.id, "heure_fin", val);

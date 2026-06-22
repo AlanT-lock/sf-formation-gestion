@@ -3,6 +3,38 @@ import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
+const PARIS_TZ = "Europe/Paris";
+
+/** Formate l'heure d'un créneau en heure française : 9H, 16H30… (timezone Europe/Paris). */
+function formatHeureCreneau(iso: string): string {
+  const parts = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: PARIS_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(iso));
+  const h = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
+  const m = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
+  return m === 0 ? `${h}H` : `${h}H${String(m).padStart(2, "0")}`;
+}
+
+/** Construit la plage horaire d'un créneau, ex : "15/06/2026 9H - 16H". */
+function formatHoraireCreneau(
+  heureDebut: string | null,
+  heureFin: string | null
+): string {
+  if (!heureDebut) return "";
+  const dateStr = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: PARIS_TZ,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(heureDebut));
+  const debut = formatHeureCreneau(heureDebut);
+  const fin = heureFin ? formatHeureCreneau(heureFin) : null;
+  return fin ? `${dateStr} ${debut} - ${fin}` : `${dateStr} ${debut}`;
+}
+
 export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session || session.role !== "admin") {
@@ -106,7 +138,7 @@ export async function GET(request: NextRequest) {
       .select(`
         signed_at,
         signature_data,
-        creneau:session_creneaux(ordre)
+        creneau:session_creneaux(ordre, heure_debut, heure_fin)
       `)
       .eq("inscription_id", inscription_id)
       .order("signed_at");
@@ -118,13 +150,16 @@ export async function GET(request: NextRequest) {
       const rawC = e.creneau;
       const creneau = Array.isArray(rawC) ? rawC[0] : rawC;
       const ordre = creneau && typeof creneau === "object" && "ordre" in creneau ? creneau.ordre : "?";
-      const date = e.signed_at
-        ? new Date(e.signed_at).toLocaleString("fr-FR", {
-            dateStyle: "short",
-            timeStyle: "medium",
-          })
-        : "—";
-      addText(`Créneau ${ordre} : ${date}`);
+      const heureDebut =
+        creneau && typeof creneau === "object" && "heure_debut" in creneau
+          ? (creneau.heure_debut as string | null)
+          : null;
+      const heureFin =
+        creneau && typeof creneau === "object" && "heure_fin" in creneau
+          ? (creneau.heure_fin as string | null)
+          : null;
+      const horaire = formatHoraireCreneau(heureDebut, heureFin);
+      addText(horaire ? `Créneau ${ordre} : ${horaire}` : `Créneau ${ordre}`);
       if (e.signature_data && typeof e.signature_data === "string") {
         try {
           const base64 = e.signature_data.replace(/^data:image\/\w+;base64,/, "");

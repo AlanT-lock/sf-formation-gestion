@@ -23,6 +23,7 @@ import {
   Eye,
 } from "lucide-react";
 import type { StepType } from "@/types/database";
+import { toDatetimeLocalValue } from "@/lib/date";
 
 function suggestedUsername(prenom: string, nom: string) {
   if (!prenom.trim() || !nom.trim()) return "";
@@ -491,11 +492,7 @@ export default function FormateurSessionPage() {
                   <label className="text-xs text-slate-500">Début</label>
                   <input
                     type="datetime-local"
-                    defaultValue={
-                      c.heure_debut
-                        ? new Date(c.heure_debut).toISOString().slice(0, 16)
-                        : ""
-                    }
+                    defaultValue={toDatetimeLocalValue(c.heure_debut)}
                     onChange={(e) =>
                       updateCreneauTime(c.id, "heure_debut", e.target.value ? new Date(e.target.value).toISOString() : "")
                     }
@@ -506,11 +503,7 @@ export default function FormateurSessionPage() {
                   <label className="text-xs text-slate-500">Fin</label>
                   <input
                     type="datetime-local"
-                    defaultValue={
-                      c.heure_fin
-                        ? new Date(c.heure_fin).toISOString().slice(0, 16)
-                        : ""
-                    }
+                    defaultValue={toDatetimeLocalValue(c.heure_fin)}
                     onChange={(e) =>
                       updateCreneauTime(c.id, "heure_fin", e.target.value ? new Date(e.target.value).toISOString() : "")
                     }
